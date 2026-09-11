@@ -1,7 +1,7 @@
 databases:
   - name: seqa-postgres
     databaseName: seqa_db
-    user: postgres
+    user: seqa_user
     plan: free
 
 services:
