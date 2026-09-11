@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import apiRouter from './routes';
 import { connectDb } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
@@ -31,6 +32,25 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api', apiRouter);
+
+// In production, serve static frontend assets if available
+const possibleDistPaths = [
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(process.cwd(), 'frontend/dist'),
+  path.resolve(process.cwd(), '../frontend/dist'),
+];
+const frontendDist = possibleDistPaths.find(p => fs.existsSync(p));
+
+if (frontendDist) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+  console.log(`[Server] Serving production frontend build from ${frontendDist}`);
+}
 
 // Centralized error handler
 app.use(errorHandler);

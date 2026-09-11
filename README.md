@@ -141,6 +141,22 @@ This launches:
 
 ---
 
+## 🚀 Deploying to Render
+
+This project includes a turnkey **Render Blueprint (`render.yaml`)** that sets up a managed PostgreSQL database and the unified full-stack web service in one click.
+
+### 1-Click Blueprint Deployment:
+1. Log in to your [Render Dashboard](https://dashboard.render.com).
+2. Click **New +** and select **Blueprint**.
+3. Connect your GitHub repository: `Akshobhya07/SEQA-Project`.
+4. Render will automatically detect `render.yaml` and provision:
+   - **PostgreSQL Database** (`seqa-postgres`)
+   - **Web Service** (`seqa-rollback-audit-manager`)
+5. Click **Apply**.
+6. Once the build finishes, Render will provide a live public HTTPS URL (e.g., `https://seqa-rollback-audit-manager.onrender.com`).
+
+---
+
 ## 📁 Project Directory Structure
 
 ```

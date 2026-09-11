@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  const existingUsers = await prisma.user.count();
+  if (existingUsers > 0 && process.env.FORCE_SEED !== 'true') {
+    console.log('[Seed] Database is already initialized with data. Skipping seed.');
+    return;
+  }
+
   console.log('Seeding database with realistic DevOps audit data...');
 
   // Clean existing tables in reverse dependency order

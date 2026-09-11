@@ -9,7 +9,9 @@
     "db:setup": "node backend/scripts/pg-manager.js setup",
     "backend:dev": "npm --prefix backend run dev",
     "frontend:dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix backend run build && npm --prefix frontend run build"
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "render:build": "cd backend && npm install && npx prisma generate && cd ../frontend && npm install && npm run build && cd ../backend && npm run build",
+    "render:start": "cd backend && npx prisma db push --accept-data-loss && npm run prisma:seed && npm run start"
   },
   "devDependencies": {}
 }
