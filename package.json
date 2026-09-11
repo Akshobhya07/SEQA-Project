@@ -1,0 +1,15 @@
+{
+  "name": "software-deployment-rollback-audit-manager",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "db:start": "node backend/scripts/pg-manager.js start",
+    "db:stop": "node backend/scripts/pg-manager.js stop",
+    "db:setup": "node backend/scripts/pg-manager.js setup",
+    "backend:dev": "npm --prefix backend run dev",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build"
+  },
+  "devDependencies": {}
+}

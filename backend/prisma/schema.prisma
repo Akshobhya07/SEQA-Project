@@ -1,0 +1,396 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  SRE
+  DEVELOPER
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Environment {
+  PRODUCTION
+  STAGING
+  QA
+  DEVELOPMENT
+}
+
+enum DeploymentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  SUCCESSFUL
+  FAILED
+  ROLLED_BACK
+  CANCELLED
+}
+
+enum HealthStatus {
+  HEALTHY
+  DEGRADED
+  CRITICAL
+  UNKNOWN
+}
+
+enum Severity {
+  SEV_1_CRITICAL
+  SEV_2_HIGH
+  SEV_3_MEDIUM
+  SEV_4_LOW
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MITIGATED
+  RESOLVED
+}
+
+enum RollbackStatus {
+  NOT_STARTED
+  PENDING_APPROVAL
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum PostMortemStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  CLOSED
+}
+
+enum RootCauseCategory {
+  CODE_DEFECT
+  CONFIGURATION
+  INFRASTRUCTURE
+  DATABASE
+  DEPENDENCY
+  PIPELINE
+  HUMAN_ERROR
+  SECURITY
+  EXTERNAL_SERVICE
+  UNKNOWN
+}
+
+enum ActionType {
+  CORRECTIVE
+  PREVENTIVE
+  MONITORING
+  PROCESS
+  CODE
+  INFRASTRUCTURE
+}
+
+enum ActionPriority {
+  P0_CRITICAL
+  P1_HIGH
+  P2_MEDIUM
+  P3_LOW
+}
+
+enum ActionStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String
+  password         String
+  role             Role              @default(VIEWER)
+  status           UserStatus        @default(ACTIVE)
+  teamId           String?
+  team             Team?             @relation(fields: [teamId], references: [id])
+  ledTeams         Team[]            @relation("TeamLead")
+  deployments      Deployment[]      @relation("UserDeployments")
+  assignedFailures DeploymentFailure[] @relation("AssignedEngineer")
+  commandedFailures DeploymentFailure[] @relation("IncidentCommander")
+  requestedRollbacks Rollback[]      @relation("RollbackRequestedBy")
+  approvedRollbacks Rollback[]       @relation("RollbackApprovedBy")
+  initiatedRollbacks Rollback[]      @relation("RollbackInitiatedBy")
+  executedSteps    RollbackStep[]    @relation("StepExecutor")
+  authoredPostMortems PostMortem[]   @relation("PostMortemAuthor")
+  assignedActions  CorrectiveAction[] @relation("ActionOwner")
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  comments         Comment[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+model Team {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String?
+  leadId       String?
+  lead         User?         @relation("TeamLead", fields: [leadId], references: [id])
+  members      User[]
+  applications Application[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Application {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  key         String        @unique
+  description String?
+  repoUrl     String?
+  teamId      String?
+  team        Team?         @relation(fields: [teamId], references: [id])
+  deployments Deployment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([key])
+}
+
+model Deployment {
+  id               String            @id // e.g. DEP-2026-000124
+  title            String
+  applicationId    String
+  application      Application       @relation(fields: [applicationId], references: [id])
+  serviceName      String
+  version          String
+  environment      Environment       @default(PRODUCTION)
+  branch           String            @default("main")
+  commitSha        String
+  deploymentTool   String            @default("GitHub Actions")
+  changeTicketId   String?
+  releaseNotes     String?
+  deployedById     String
+  deployedBy       User              @relation("UserDeployments", fields: [deployedById], references: [id])
+  status           DeploymentStatus  @default(IN_PROGRESS)
+  startedAt        DateTime          @default(now())
+  completedAt      DateTime?
+  durationSeconds  Int?
+  healthStatus     HealthStatus      @default(HEALTHY)
+  healthMetrics    String?           // JSON string: { api, database, frontend, workers, errorRate, latencyMs }
+  logs             String?           @db.Text
+  failure          DeploymentFailure?
+  rollback         Rollback?
+  postMortem       PostMortem?
+  auditLogs        AuditLog[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([status])
+  @@index([environment])
+  @@index([applicationId])
+  @@index([startedAt])
+}
+
+model DeploymentFailure {
+  id                   String         @id // e.g. INC-2026-000042
+  deploymentId         String         @unique
+  deployment           Deployment     @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  severity             Severity       @default(SEV_2_HIGH)
+  status               IncidentStatus @default(OPEN)
+  failureTime          DateTime       @default(now())
+  detectedTime         DateTime       @default(now())
+  failureReason        String
+  whatHappened         String         @db.Text
+  observableSymptoms   String?        @db.Text
+  affectedServices     String?        // JSON array of service names
+  usersAffected        Int            @default(0)
+  downtimeMinutes      Int            @default(0)
+  businessImpact       String?        @db.Text
+  dataImpact           String?        @db.Text
+  errorMessage         String?        @db.Text
+  errorCode            String?
+  logsSnippet          String?        @db.Text
+  alertUrl             String?
+  immediateActionsTaken String?       @db.Text
+  assignedEngineerId   String?
+  assignedEngineer     User?          @relation("AssignedEngineer", fields: [assignedEngineerId], references: [id])
+  incidentCommanderId  String?
+  incidentCommander    User?          @relation("IncidentCommander", fields: [incidentCommanderId], references: [id])
+  postMortem           PostMortem?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([severity])
+  @@index([status])
+}
+
+model Rollback {
+  id               String         @id // e.g. RB-2026-000018
+  deploymentId     String         @unique
+  deployment       Deployment     @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  failedVersion    String
+  restoredVersion  String
+  environment      Environment    @default(PRODUCTION)
+  reason           String         @db.Text
+  status           RollbackStatus @default(NOT_STARTED)
+  requiresApproval Boolean        @default(true)
+  requestedById    String
+  requestedBy      User           @relation("RollbackRequestedBy", fields: [requestedById], references: [id])
+  requestedAt      DateTime       @default(now())
+  approvedById     String?
+  approvedBy       User?          @relation("RollbackApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  approvalComment  String?        @db.Text
+  approvalStatus   ApprovalStatus @default(PENDING)
+  initiatedById    String?
+  initiatedBy      User?          @relation("RollbackInitiatedBy", fields: [initiatedById], references: [id])
+  startedAt        DateTime?
+  completedAt      DateTime?
+  durationSeconds  Int?
+  steps            RollbackStep[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status])
+  @@index([approvalStatus])
+}
+
+model RollbackStep {
+  id          String         @id @default(cuid())
+  rollbackId  String
+  rollback    Rollback       @relation(fields: [rollbackId], references: [id], onDelete: Cascade)
+  stepNumber  Int
+  title       String
+  description String         @db.Text
+  status      StepStatus     @default(PENDING)
+  executorId  String?
+  executor    User?          @relation("StepExecutor", fields: [executorId], references: [id])
+  startedAt   DateTime?
+  completedAt DateTime?
+  notes       String?        @db.Text
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([rollbackId, stepNumber])
+}
+
+model PostMortem {
+  id                  String             @id // e.g. PM-2026-000011
+  incidentId          String?            @unique
+  incident            DeploymentFailure? @relation(fields: [incidentId], references: [id])
+  deploymentId        String?            @unique
+  deployment          Deployment?        @relation(fields: [deploymentId], references: [id])
+  title               String
+  status              PostMortemStatus   @default(DRAFT)
+  severity            Severity           @default(SEV_2_HIGH)
+  authorId            String
+  author              User               @relation("PostMortemAuthor", fields: [authorId], references: [id])
+  executiveSummary    String             @db.Text
+  incidentTimeline    String?            @db.Text // JSON string array of { timestamp, event, actor }
+  impactAnalysis      String?            @db.Text // JSON string: { duration, usersAffected, servicesAffected, revenueImpact, dataImpact }
+  rootCauseCategory   RootCauseCategory  @default(UNKNOWN)
+  rootCauseDetail     String             @db.Text
+  fiveWhys            String?            @db.Text // JSON string array of { step: number, question: string, answer: string }
+  contributingFactors String?            @db.Text // JSON string array of strings
+  whatWentWell        String?            @db.Text
+  whatWentWrong       String?            @db.Text
+  lessonsLearned      String?            @db.Text
+  correctiveActions   CorrectiveAction[]
+  comments            Comment[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([status])
+  @@index([rootCauseCategory])
+}
+
+model CorrectiveAction {
+  id                String         @id // e.g. CA-2026-000031
+  postMortemId      String
+  postMortem        PostMortem     @relation(fields: [postMortemId], references: [id], onDelete: Cascade)
+  description       String         @db.Text
+  type              ActionType     @default(CORRECTIVE)
+  priority          ActionPriority @default(P2_MEDIUM)
+  ownerId           String
+  owner             User           @relation("ActionOwner", fields: [ownerId], references: [id])
+  dueDate           DateTime
+  completionDate    DateTime?
+  status            ActionStatus   @default(OPEN)
+  verificationNotes String?        @db.Text
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([priority])
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  timestamp    DateTime    @default(now())
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id])
+  action       String
+  entityType   String
+  entityId     String
+  deploymentId String?
+  deployment   Deployment? @relation(fields: [deploymentId], references: [id])
+  previousValue String?    @db.Text
+  newValue     String?     @db.Text
+  description  String      @db.Text
+  ipAddress    String?
+  isImmutable  Boolean     @default(true)
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@index([action])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  title     String
+  message   String   @db.Text
+  type      String   @default("INFO") // INFO, WARNING, CRITICAL, SUCCESS
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Comment {
+  id           String     @id @default(cuid())
+  postMortemId String
+  postMortem   PostMortem @relation(fields: [postMortemId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User       @relation(fields: [authorId], references: [id])
+  content      String     @db.Text
+  createdAt    DateTime   @default(now())
+
+  @@index([postMortemId])
+}
